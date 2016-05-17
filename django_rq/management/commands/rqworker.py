@@ -2,6 +2,7 @@ import os
 import importlib
 import logging
 from optparse import make_option
+import time
 
 from django.core.management.base import BaseCommand
 
@@ -77,6 +78,11 @@ class Command(BaseCommand):
             default=None,
             help='PID file to write the worker`s pid into'
         ),
+        make_option(
+            '--retry',
+            action='store_true',
+            help='Retry connection if worker already exists.',
+        ),
     )
     args = '<queue queue ...>'
 
@@ -96,12 +102,26 @@ class Command(BaseCommand):
                 connection=queues[0].connection,
                 name=options['name'],
                 exception_handlers=get_exception_handlers() or None,
-                default_worker_ttl=options['worker_ttl']
+                default_worker_ttl=options['worker_ttl'],
+                remove_existing=options.get('remove_existing', False),
             )
 
             # Call use_connection to push the redis connection into LocalStack
             # without this, jobs using RQ's get_current_job() will fail
             use_connection(w.connection)
-            w.work(burst=options.get('burst', False))
+
+            # Retry if worker already exists.
+            while 1:
+                try:
+                    w.work(burst=options.get('burst', False))
+                    break
+                except ValueError as err:
+                    if options.get('retry', False) and 'exists an active worker' in str(err):
+                        msg = 'RQ worker already exists, retrying in 60 seconds'
+                        w.log.warning(msg)
+                        time.sleep(60)
+                    else:
+                        raise
+
         except ConnectionError as e:
             print(e)
