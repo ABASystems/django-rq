@@ -103,7 +103,6 @@ class Command(BaseCommand):
                 name=options['name'],
                 exception_handlers=get_exception_handlers() or None,
                 default_worker_ttl=options['worker_ttl'],
-                remove_existing=options.get('remove_existing', False),
             )
 
             # Call use_connection to push the redis connection into LocalStack
